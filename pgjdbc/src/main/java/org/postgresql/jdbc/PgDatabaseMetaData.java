@@ -34,12 +34,15 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.StringTokenizer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class PgDatabaseMetaData implements DatabaseMetaData {
 
   public PgDatabaseMetaData(PgConnection conn) {
     this.connection = conn;
   }
+  private static final Logger LOGGER = Logger.getLogger(PgDatabaseMetaData.class.getName());
 
   private String keywords;
 
@@ -2268,6 +2271,8 @@ public class PgDatabaseMetaData implements DatabaseMetaData {
     f[15] = new Field("SQL_DATA_TYPE", Oid.INT4);
     f[16] = new Field("SQL_DATETIME_SUB", Oid.INT4);
     f[17] = new Field("NUM_PREC_RADIX", Oid.INT4);
+
+    LOGGER.log(Level.FINE, "*** In getTypeInfo() function... ***");
 
     String sql;
     sql = "SELECT t.typname,t.oid FROM pg_catalog.pg_type t"
