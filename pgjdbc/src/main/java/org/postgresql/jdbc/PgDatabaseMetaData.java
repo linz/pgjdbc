@@ -9,6 +9,7 @@ import org.postgresql.core.BaseStatement;
 import org.postgresql.core.Field;
 import org.postgresql.core.Oid;
 import org.postgresql.core.ServerVersion;
+import org.postgresql.core.TypeInfo;
 import org.postgresql.util.ByteConverter;
 import org.postgresql.util.GT;
 import org.postgresql.util.JdbcBlackHole;
@@ -33,12 +34,15 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.StringTokenizer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class PgDatabaseMetaData implements DatabaseMetaData {
 
   public PgDatabaseMetaData(PgConnection conn) {
     this.connection = conn;
   }
+  private static final Logger LOGGER = Logger.getLogger(PgDatabaseMetaData.class.getName());
 
   private String keywords;
 
@@ -2267,6 +2271,8 @@ public class PgDatabaseMetaData implements DatabaseMetaData {
     f[16] = new Field("SQL_DATETIME_SUB", Oid.INT4);
     f[17] = new Field("NUM_PREC_RADIX", Oid.INT4);
 
+    LOGGER.log(Level.FINE, "*** In getTypeInfo() function... ***");
+
     String sql;
     sql = "SELECT t.typname,t.oid FROM pg_catalog.pg_type t"
           + " JOIN pg_catalog.pg_namespace n ON (t.typnamespace = n.oid) "
@@ -2291,6 +2297,11 @@ public class PgDatabaseMetaData implements DatabaseMetaData {
               connection.encodeString(Integer.toString(java.sql.DatabaseMetaData.typeNullable));
     byte[] bSearchable =
               connection.encodeString(Integer.toString(java.sql.DatabaseMetaData.typeSearchable));
+
+    TypeInfo ti = connection.getTypeInfo();
+    if (ti instanceof TypeInfoCache) {
+      ((TypeInfoCache) ti).preCacheSQLTypes();
+    }
 
     while (rs.next()) {
       byte[][] tuple = new byte[19][];

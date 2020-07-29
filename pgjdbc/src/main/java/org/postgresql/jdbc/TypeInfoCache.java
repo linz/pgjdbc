@@ -57,6 +57,7 @@ public class TypeInfoCache implements TypeInfo {
   private PreparedStatement getArrayElementOidStatement;
   private PreparedStatement getArrayDelimiterStatement;
   private PreparedStatement getTypeInfoStatement;
+  private PreparedStatement cacheTypeInfoStatement;
 
   // basic pg types info:
   // 0 - type name
@@ -179,6 +180,57 @@ public class TypeInfoCache implements TypeInfo {
 
   public int getSQLType(int oid) throws SQLException {
     return getSQLType(getPGType(oid));
+  }
+
+  public void preCacheSQLTypes() throws SQLException {
+    if (cacheTypeInfoStatement == null) {
+      String sql = "SELECT typname, typinput='array_in'::regproc, typtype "
+        + "  FROM pg_catalog.pg_type "
+        + "  LEFT "
+        + "  JOIN (select ns.oid as nspoid, ns.nspname, r.r "
+        + "          from pg_namespace as ns "
+        // -- go with older way of unnesting array to be compatible with 8.0
+        + "          join ( select s.r, (current_schemas(false))[s.r] as nspname "
+        + "                   from generate_series(1, array_upper(current_schemas(false), 1)) as s(r) ) as r "
+        + "         using ( nspname ) "
+        + "         where ns.nspname  != 'pg_toast'"
+        + "       ) as sp "
+        + "    ON sp.nspoid = typnamespace "
+        + " WHERE typrelid = 0 OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = typrelid)"
+        + " ORDER BY typname, sp.r, pg_type.oid DESC;";
+
+      cacheTypeInfoStatement = conn.prepareStatement(sql);
+
+      // Go through BaseStatement to avoid transaction start.
+      if (!((BaseStatement) getTypeInfoStatement)
+        .executeWithFlags(QueryExecutor.QUERY_SUPPRESS_BEGIN)) {
+        throw new PSQLException(GT.tr("No results were returned by the query."), PSQLState.NO_DATA);
+      }
+
+      ResultSet rs = cacheTypeInfoStatement.getResultSet();
+      while (rs.next()) {
+        String typeName = rs.getString(1);
+        if (!pgNameToSQLType.containsKey(typeName)) {
+          Integer type = null;
+          boolean isArray = rs.getBoolean(2);
+          String typtype = rs.getString(3);
+          if (isArray) {
+            type = Types.ARRAY;
+          } else if ("c".equals(typtype)) {
+            type = Types.STRUCT;
+          } else if ("d".equals(typtype)) {
+            type = Types.DISTINCT;
+          } else if ("e".equals(typtype)) {
+            type = Types.VARCHAR;
+          }
+          if (type == null) {
+            type = Types.OTHER;
+          }
+          pgNameToSQLType.put(typeName, type);
+        }
+      }
+      rs.close();
+    }
   }
 
   public synchronized int getSQLType(String pgTypeName) throws SQLException {
